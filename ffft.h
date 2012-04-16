@@ -11,7 +11,7 @@ void fft_input2 (const int16_t *, complex_t *);
 void fft_execute (complex_t *);
 void fft_output (const complex_t *, uint8_t *);
 int16_t fmuls_f (int16_t, int16_t);
-extern const prog_int16_t tbl_window[];
+extern volatile prog_int16_t tbl_window[];
 #else				/* for asm module */
 #define T0L	r0
 #define T0H	r1
