@@ -132,11 +132,13 @@ void init(void)
 	lcd_init(CHIP1);
 	lcd_init(CHIP2);
 
+#ifdef DISPLAY_TEST_PATTERN
 	// Display test pattern for a few seconds to allow contrast adjustment
 	set_bl(0xffff); // backlight on full immediately
 	lcd_set_screen( 0xf0 ); // print test pattern
 	_delay_ms(1000); // delay
 	set_bl(0); // backlight off immediately
+#endif
 	
 	adc_init(); // Analog-to-digital converter init	
 	spi_init(); // Serial interface to digital potentiometer init

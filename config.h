@@ -9,10 +9,12 @@
 
 #define FALL_SPEED 15
 
+//#define DISPLAY_TEST_PATTERN
+
 #define FFT_N	256		/* Number of samples (64,128,256,512). Don't forget to clean! */
 
 /* Exponential display averaging */
-#define AVG_SAMPLES 4  // using a value of 4 gives a huge speed boost by avoiding long division assembly routines in avg.S
+#define AVG_SAMPLES 2 // best speeds are achieved with powers of 2 
 
 /* Analog signal pre-processing */
 #define SPI_PRESCALE 64

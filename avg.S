@@ -1,7 +1,7 @@
 #include <avr/io.h> 
 #include "config.h"
 
-#if AVG_SAMPLES == 4
+#if AVG_SAMPLES != 2 && AVG_SAMPLES != 4 && AVG_SAMPLES != 8 && AVG_SAMPLES != 16
 #define DIV8_ROUTINE
 #endif
 
@@ -78,22 +78,10 @@ exp_avg_loop:
 	mov	AVG_TEMP,r0
 	mov	MUL2,r1
 
-#if AVG_SAMPLES >= 16
 	lsr	MUL2
 	ror	AVG_TEMP
-#endif
-#if AVG_SAMPLES >= 8
 	lsr	MUL2
 	ror	AVG_TEMP
-#endif
-#if AVG_SAMPLES >= 4
-	lsr	MUL2
-	ror	AVG_TEMP
-#endif
-#if AVG_SAMPLES >= 2
-	lsr	MUL2
-	ror	AVG_TEMP
-#endif
 
 #endif
 
@@ -112,10 +100,8 @@ exp_avg_loop:
 #if AVG_SAMPLES >= 8
 	lsr	BUF_TEMP
 #endif
-#if AVG_SAMPLES >= 4
-	lsr	BUF_TEMP
-#endif
 #if AVG_SAMPLES >= 2
+	lsr	BUF_TEMP
 	lsr	BUF_TEMP
 #endif
 
