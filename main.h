@@ -24,6 +24,7 @@ void init(void);
 void io_init(void);
 void backlight_init(void);
 void lcd_init( uint8_t chip );
+void lcd_deinit( uint8_t chip );
 void lcd_wait_ready( uint8_t chip );
 void lcd_write_data( uint8_t data, uint8_t chip );
 void lcd_write_instruction( uint8_t data, uint8_t chip );
@@ -33,6 +34,7 @@ void lpf_init(void);
 void adc_init(void);
 void set_bl( uint16_t val ); // set backlight to val between 0 and OCR1A
 void backlight_task( int val );
+int  backlight_timeout_task( uint8_t bar, uint8_t cutoff );
 void spi_init(void); 
 void spi_deinit(void); 
 uint16_t pot_dec_register( uint8_t address );

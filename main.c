@@ -47,7 +47,7 @@ int main(void)
 	pot_set_gain( POT_GAIN );
 	pot_set_bias( POT_BIAS );
 
-	spi_deinit();
+	spi_deinit(); // disable spi unless we plan to adjust the digital pot later
 
 	while(1)
 	{
@@ -63,15 +63,63 @@ int main(void)
 		// Do exponential/FIR filtering with history data
 		exp_average( spectrum, spectrum_history );
 
-		// Print resulting data to LCD 
-		fastlcd( spectrum );
+		// Don't bother printing to lcd if the backlight isn't on
+		if( backlight_timeout_task( spectrum[BACKLIGHT_BAR], BACKLIGHT_CUTOFF ) )
+		{
+			// Print resulting data to LCD 
+			fastlcd( spectrum );
+		}
 
-		// Backlight
-		backlight_task(-1);
 	}
 	return 0;
 }
 
+int backlight_timeout_task( uint8_t bar, uint8_t cutoff )
+{
+	static uint8_t backlight_state = 1;
+	static unsigned long quiet_count = 0;
+
+	uint8_t bl = backlight_state;
+	if( bar < cutoff )
+	{
+		if( quiet_count >= BACKLIGHT_TIMEOUT )
+		{
+			bl = 0;
+		}
+		else
+		{
+			quiet_count++;
+		}
+	}
+	else
+	{
+		bl = 1;
+		quiet_count = 0;
+	}
+
+	if( bl != backlight_state )
+	{
+		if( bl )
+		{
+			lcd_init( CHIP1 );
+			lcd_init( CHIP2 );
+			backlight_task(LPF_OCR+1); // Fade up to full brightness
+		}
+		else
+		{
+			lcd_deinit( CHIP1 );
+			lcd_deinit( CHIP2 );
+			backlight_task(0);
+		}
+
+		backlight_state = bl;
+	}
+	else
+	{
+		backlight_task(-1);
+	}
+	return (backlight_state) ? 1 : 0;
+}
 
 void init(void)
 {
@@ -195,6 +243,12 @@ void lcd_init( uint8_t chip )
 	lcd_write_instruction( LCD_ON, chip );
 	lcd_write_instruction( LCD_START_LINE | 0, chip );
 	lcd_write_instruction( LCD_ADDR | 0, chip );
+	return;
+}
+void lcd_deinit( uint8_t chip )
+{
+	_delay_ms(10);
+	lcd_write_instruction( LCD_OFF, chip );
 	return;
 }
 void lcd_wait_ready( uint8_t chip )

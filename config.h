@@ -3,6 +3,9 @@
 
 // Backlight stuff
 #define BACKLIGHT_FADE_SPEED 2 // higher values = slower fade rate
+#define BACKLIGHT_TIMEOUT 1000
+#define BACKLIGHT_CUTOFF 7
+#define BACKLIGHT_BAR 127
 
 #define FALL_SPEED 15
 
