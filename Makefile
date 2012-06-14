@@ -1,25 +1,34 @@
 TARGET = fft
 
 AVRDUDE_PATH = /usr/local/bin
-AVRDUDE_PROGRAMMER = avrispmkII
+AVRDUDE_DRAGON = dragon_isp
+AVRDUDE_MKII = avrispmkII
 AVRDUDE_PORT = usb
 AVRDUDE_CONF = /usr/local/etc/avrdude.conf
 AVRDUDE_VERBOSITY = -vv -B0.13
 
-HFUSE = 0xdf
-LFUSE = 0xff
-EFUSE = 0x04
+NORMAL_LFUSE = 0xff
+NORMAL_HFUSE = 0xdf
+NORMAL_EFUSE = 0x04
+
+DEBUGGING_LFUSE = 0xff
+DEBUGGING_HFUSE = 0x9f
+DEBUGGING_EFUSE = 0x04
 
 AVRDUDE_MCU = m328p
 MCU         = atmega328p
 F_CPU       = 20000000
+
+AVARICE_MCU = $(MCU)
+AVARICE_PORT = 4242
+AVARICE_FLAGS = --program --file $(TARGET).elf --part $(AVARICE_MCU) --debugwire --dragon -d localhost:$(AVARICE_PORT)
 
 AVR_TOOLS_PATH = /usr/local/bin
 LIBRARY_DIR = include
 INCLUDE_DIR = include
 
 SRC = main.c
-ASRC = ffft.S lcd.S adc.S avg.S
+ASRC = ffft.S lcd.S adc.S avg.S logtable.S
 
 INCLUDE = \
 			-I$(LIBRARY_DIR) \
@@ -38,7 +47,9 @@ MAKEFILE = Makefile
 # Debugging format.
 # Native formats for AVR-GCC's -g are stabs [default], or dwarf-2.
 # AVR (extended) COFF requires stabs, plus an avr-objcopy run.
-DEBUG = stabs
+# gdb3 is the most robust format available, allowing for even 
+# proprocessor macros to be expanded
+DEBUG = gdb3
 
 OPT = s
 
@@ -70,11 +81,17 @@ LDFLAGS     = #-lm
 
 # AVRDUDE Settings
 AVRDUDE_WRITE_FLASH = -Uflash:w:$(TARGET).hex:i
-AVRDUDE_WRITE_HFUSE = -Uhfuse:w:$(HFUSE):m
-AVRDUDE_WRITE_LFUSE = -Uhfuse:w:$(LFUSE):m
-AVRDUDE_WRITE_EFUSE = -Uhfuse:w:$(EFUSE):m
-AVRDUDE_FUSES_FLAGS = $(AVRDUDE_WRITE_HFUSE) $(AVRDUDE_WRITE_LFUSE) $(AVRDUDE_WRITE_EFUSE)
-AVRDUDE_FLAGS       = $(AVRDUDE_EXTRA_FLAGS) $(AVRDUDE_VERBOSITY) -c$(AVRDUDE_PROGRAMMER) -P$(AVRDUDE_PORT) -p$(AVRDUDE_MCU) -C$(AVRDUDE_CONF)
+AVRDUDE_WRITE_NORMAL_HFUSE = -Uhfuse:w:$(NORMAL_HFUSE):m
+AVRDUDE_WRITE_NORMAL_LFUSE = -Ulfuse:w:$(NORMAL_LFUSE):m
+AVRDUDE_WRITE_NORMAL_EFUSE = -Uefuse:w:$(NORMAL_EFUSE):m
+AVRDUDE_WRITE_DEBUGGING_HFUSE = -Uhfuse:w:$(DEBUGGING_HFUSE):m
+AVRDUDE_WRITE_DEBUGGING_LFUSE = -Ulfuse:w:$(DEBUGGING_LFUSE):m
+AVRDUDE_WRITE_DEBUGGING_EFUSE = -Uefuse:w:$(DEBUGGING_EFUSE):m
+
+AVRDUDE_NORMAL_FUSES_FLAGS = $(AVRDUDE_WRITE_NORMAL_HFUSE) $(AVRDUDE_WRITE_NORMAL_LFUSE) $(AVRDUDE_WRITE_NORMAL_EFUSE)
+AVRDUDE_DEBUGGING_FUSES_FLAGS = $(AVRDUDE_WRITE_DEBUGGING_HFUSE) $(AVRDUDE_WRITE_DEBUGGING_LFUSE) $(AVRDUDE_WRITE_DEBUGGING_EFUSE)
+
+AVRDUDE_FLAGS       = $(AVRDUDE_EXTRA_FLAGS) $(AVRDUDE_VERBOSITY) -P$(AVRDUDE_PORT) -p$(AVRDUDE_MCU) -C$(AVRDUDE_CONF)
 
 # Combine all necessary flags and optional flags.
 # Add target processor to flags.
@@ -94,10 +111,15 @@ AS 	    = $(AVR_TOOLS_PATH)/avr-as
 AVRDUDE = $(AVRDUDE_PATH)/avrdude
 REMOVE  = rm -fv
 MV      = mv -f
+AVARICE = avarice
+GDB		= avr-gdb
 
 
 # Define all object files.
 OBJ = $(SRC:.c=.o) $(CXXSRC:.cpp=.o) $(ASRC:.S=.o)
+
+# Preprocessor files
+PP =  $(SRC:.c=.i) $(CXXSRC:.cpp=.i) $(ASRC:.S=.i)
 
 # Define all listing files.
 LST = $(ASRC:.S=.lst) $(CXXSRC:.cpp=.lst) $(SRC:.c=.lst)
@@ -111,6 +133,8 @@ build: hex
 
 printobj: 
 	@echo $(OBJ)
+printpp:
+	@echo $(PP)
 
 elf: $(TARGET).elf
 lst: $(TARGET).lst
@@ -121,10 +145,22 @@ sym: $(TARGET).sym
 
 # Program the device.
 program: $(TARGET).hex
-	$(AVRDUDE) $(AVRDUDE_FLAGS) $(AVRDUDE_WRITE_FLASH)
-fuses:
-	$(AVRDUDE) $(AVRDUDE_FLAGS) $(AVRDUDE_FUSES_FLAGS)
+	$(AVRDUDE) $(AVRDUDE_FLAGS) -c$(AVRDUDE_MKII) $(AVRDUDE_WRITE_FLASH) || \
+	$(AVRDUDE) $(AVRDUDE_FLAGS) -c$(AVRDUDE_DRAGON) $(AVRDUDE_WRITE_FLASH) 
+program2: $(TARGET).hex
+	$(AVRDUDE) $(AVRDUDE_FLAGS) -c$(AVRDUDE_MKII) $(AVRDUDE_WRITE_FLASH)
 
+fuses:
+	$(AVRDUDE) -c$(AVRDUDE_DRAGON) $(AVRDUDE_FLAGS) $(AVRDUDE_NORMAL_FUSES_FLAGS); sleep 5; \
+	$(AVRDUDE) -c$(AVRDUDE_DRAGON) $(AVRDUDE_FLAGS) $(AVRDUDE_NORMAL_FUSES_FLAGS)
+debug-fuses:
+	$(AVRDUDE) -c$(AVRDUDE_DRAGON) $(AVRDUDE_FLAGS) $(AVRDUDE_DEBUGGING_FUSES_FLAGS) \
+		@echo "Power cycle the target to enable debugwire"
+
+debug: $(TARGET).elf 
+	$(AVARICE) $(AVARICE_FLAGS)
+gdb:
+	$(GDB) $(TARGET).elf
 
 # Display size of file.
 HEXSIZE = $(SIZE) --target=$(FORMAT) $(TARGET).hex
@@ -135,15 +171,31 @@ sizebefore:
 sizeafter:
 	@if [ -f $(TARGET).elf ]; then echo; echo $(MSG_SIZE_AFTER); $(HEXSIZE); echo; fi
 
+adc.S: logtable.S
+
+logtable.S: scripts/log_table_adc.php config.h
+	scripts/log_table_adc.php > $@
+
+adc.o: config.h
+avg.o: config.h
+ffft.o: config.h
+lcd.o: config.h
+main.o: config.h
+
 %.hex: %.elf
 	$(OBJCOPY) $(OBJCOPY_FLAGS) $< $@
 
 %.o: %.cpp
 	$(CXX) -c $(ALL_CXXFLAGS) $< -o $@
 
-$(TARGET).elf: $(OBJ)
+$(TARGET).elf: $(OBJ) $(PP)
 	$(CC) $(ALL_CFLAGS) $(OBJ) -o $@ $(LDFLAGS)
 
+%.i: %.c 
+	$(CC) -E $(ALL_CFLAGS) $< -o $@
+
+%.i: %.S 
+	$(CC) -E $(ALL_CFLAGS) $< -o $@
 
 %.o: %.c %.h
 	$(CC) -c $(ALL_CFLAGS) $< -o $@
@@ -158,7 +210,7 @@ $(TARGET).elf: $(OBJ)
 clean:
 	@$(REMOVE) $(TARGET).hex $(TARGET).eep $(TARGET).cof $(TARGET).elf \
 	$(TARGET).map $(TARGET).sym $(TARGET).lss core.a \
-	$(OBJ) $(LST) $(SRC:.c=.s) $(SRC:.c=.d) $(CXXSRC:.cpp=.s) $(CXXSRC:.cpp=.d) \
+	$(OBJ) $(LST) $(PP) $(SRC:.c=.s) $(SRC:.c=.d) $(CXXSRC:.cpp=.s) $(CXXSRC:.cpp=.d) \
 
 depend:
 	if grep '^# DO NOT DELETE' $(MAKEFILE) >/dev/null; \

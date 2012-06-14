@@ -3,6 +3,9 @@
 #include "constants.h"
 #include "config.h"
 
+#define CHIP1 _BV(CSEL1)
+#define CHIP2 _BV(CSEL2)
+
 ;#define LOGSCALE
 
 ; Prints data very quickly to the lcd
@@ -17,6 +20,7 @@
 #define 	MAXVAL				r20
 #define 	DISPLAY_DATA		r21
 #define 	TEMPR2				r22
+#define 	CHIPNO				r23
 
 #define 	NUM_COLS	0x40
 #define 	NUM_ROWS 0x08
@@ -28,8 +32,8 @@
 .endm
 
 .macro WAIT_BUSY_PREP	val
-	ldi	TEMPR,\val
-	out	_SFR_IO_ADDR(PORTC),TEMPR
+	;ldi	TEMPR,\val
+	out	_SFR_IO_ADDR(PORTC),\val
 
 	; Port D input
 	out	_SFR_IO_ADDR(DDRD),ZERO
@@ -49,7 +53,9 @@
 
 .macro SET_PAGE pagenum,chipsel
 
-	WAIT_BUSY_PREP _BV(\chipsel) | _BV(RW)
+	ldi	TEMPR,_BV(RW)
+	or		TEMPR,\chipsel
+	WAIT_BUSY_PREP TEMPR
 	
 	mov 	ZH,r25  								; r25:r24 will be set to the address of the end of the display data (odd, I know)
 	mov 	ZL,r24  								; move pointer to X
@@ -59,8 +65,7 @@
 
 	WAIT_BUSY
 
-	ldi	TEMPR,_BV(\chipsel)
-	out	_SFR_IO_ADDR(PORTC),TEMPR
+	out	_SFR_IO_ADDR(PORTC),\chipsel
 
 	mov	TEMPR,\pagenum
 	ori	TEMPR,LCD_PAGE
@@ -73,9 +78,12 @@
 .endm
 
 .macro PRINT_DATA chipsel
-	WAIT_BUSY_PREP _BV(\chipsel) | _BV(RW)
+	ldi	TEMPR,_BV(RW)
+	or		TEMPR,\chipsel
+	WAIT_BUSY_PREP TEMPR
 
-	ldi	TEMPR,_BV(\chipsel) | _BV(DI)
+	ldi	TEMPR,_BV(DI)
+	or		TEMPR,\chipsel
 	ldi	TEMPR2,0xff
 
 	WAIT_BUSY
@@ -105,8 +113,11 @@ fastlcd:
 	push	YH
 	push	ZL
 	push	ZH
+	push	CHIPNO
 
 	clr	ZERO
+
+	ldi	CHIPNO,CHIP1
 
 	; XXX INTERESTING!!!! addi
 	subi	r24,-128								; Set r24:r25 to end of data
@@ -121,7 +132,7 @@ rowloop0:
 	; Set the LCD page number and prepare some variables 
 	
 	clr	NON_BLANK_COUNT					; Using NON_BLANK_COUNT to keep track of if the row is completely blank
-	SET_PAGE ROW,CSEL1
+	SET_PAGE ROW,CHIPNO
 
 colloop0:
 	sbrc	REMAINING_BLANK,0					; If remaining_blank == 1, go straight to display_zero0
@@ -174,7 +185,7 @@ display_zero0:
 printdata0:
 	st		Z,DATAR
 
-	PRINT_DATA CSEL1
+	PRINT_DATA CHIPNO
 
 	dec	COL									; decrement the col number
 	breq	endcol0								; test if zero
@@ -198,86 +209,14 @@ endlcd0:
 	subi	r24,64								; Move the pointer to the middle of the data
 	sbci	r25,0
 
-;;;;;;;;;;;;;;;;
-; NEXT CHIP!
+	cpi	CHIPNO,CHIP2
+	breq	endlcd1
 
-	clr	ROW									; Row has to count up instead of down because we use it to set the lcd row
-	
-	clr	REMAINING_BLANK
-
-rowloop1:
-	clr	NON_BLANK_COUNT					; Using NON_BLANK_COUNT to keep track of if the row is completely blank
-	
-	; Set the LCD page number and prepare some variables 
-	SET_PAGE ROW,CSEL2
-
-colloop1:
-	sbrc	REMAINING_BLANK,0					; If remaining_blank == 1, go straight to display_zero0
-	rjmp  display_zero1
-
-	ld		DATAR,-Z								; Load data from pointer location and decrement
-
-#ifdef LOGSCALE
-	ldi	XL,lo8((display_log_table))
-	ldi	XH,hi8((display_log_table))
-
-	add	XL,DATAR
-	adc	XH,ZERO
-
-	lpm	DATAR,X
-#endif
-	
-	cpi	DATAR,0x00
-	breq	display_zero1
-
-	cpi	DATAR,0x08
-	brlo  display_datamiddle1
-
-display_datahigh1:
-	ldi	NON_BLANK_COUNT,0x01				; inc non-zero display_data count since this row will not be blank
-	subi	DATAR,0x08
-	ldi	DISPLAY_DATA,0xff
-	rjmp	printdata1
-
-display_datamiddle1:
-	ldi	XL,lo8((bar_lookup-1))				; Load pointer to partial bar display data table
-	ldi	XH,hi8((bar_lookup-1))
-
-	add	XL,DATAR								; increment pointer by the appropriate amount
-	adc	XH,ZERO
-
-	clr	DATAR
-	ldi	NON_BLANK_COUNT,0x01				; inc non-zero display_data count since this row will not be blank
-
-	ld		DISPLAY_DATA,X						; load value from the table
-	rjmp	printdata1
-
-display_zero1:
-	clr	DISPLAY_DATA						; display_data is 0x00
-
-printdata1:
-	st		Z,DATAR
-	
-	PRINT_DATA CSEL2
-
-	dec	COL									; decrement the col number
-	breq	endcol1								; test if zero
-
-	rjmp	colloop1								; go back to start of loop for col
-
-endcol1:
-	inc	ROW
-	
-	cpi	ROW,NUM_ROWS 						; check if ROW is maxed out
-	breq 	endlcd1
-	
-	; Check to see if the entire row was blank
-	sbrs	NON_BLANK_COUNT,0
-	ldi	REMAINING_BLANK,0x01
-
-	rjmp	rowloop1
+	ldi	CHIPNO,CHIP2
+	rjmp	displaystart
 
 endlcd1:											; cleanup
+	pop	CHIPNO
 	pop	ZH
 	pop	ZL
 	pop	YH

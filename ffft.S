@@ -705,21 +705,19 @@ fft_output:
 	;stw	Y+, BH,BL			;*Y++ = B;
 	; Only store the low 8 bits cuz that's all we need
 
-	; Divide by 2
+	;; 
+	; divide steps loop
+	lds	XL,(divide_steps) ; test for non-zero
+	cpi	XL,0
+	breq 5f ; continue if zero
+4:
 	lsr	BH
 	ror	BL
-	lsr	BH
-	ror	BL
-#if OVERSAMPS > 8
-	lsr	BH
-	ror	BL
-#endif
-#if OVERSAMPS > 16
-	lsr	BH
-	ror	BL
-#endif
+	dec	XL
+	brne 4b
+5:
 
-	inc	BL
+;	inc	BL
 	
 	st		Y+,BL
 	

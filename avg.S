@@ -82,7 +82,6 @@ exp_avg_loop:
 	ror	AVG_TEMP
 	lsr	MUL2
 	ror	AVG_TEMP
-
 #endif
 
 	; aspektrum[i] = spektrum[i] / AVG_SAMPLES + tmp;
@@ -100,8 +99,10 @@ exp_avg_loop:
 #if AVG_SAMPLES >= 8
 	lsr	BUF_TEMP
 #endif
-#if AVG_SAMPLES >= 2
+#if AVG_SAMPLES >= 4
 	lsr	BUF_TEMP
+#endif
+#if AVG_SAMPLES >= 2
 	lsr	BUF_TEMP
 #endif
 

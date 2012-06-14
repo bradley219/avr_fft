@@ -25,6 +25,17 @@ int16_t capture[FFT_N];
 volatile uint16_t sampleaccum = 0;
 volatile uint8_t  osamp_count = 0;
 volatile uint16_t last_sample = 0;
+volatile uint16_t missed_triggers = 0;
+
+void avc_task( uint8_t *spec_buffer );
+
+volatile uint16_t lpf_ocr = LPF_OCR;
+
+/* Timeout/sleep vars */
+volatile uint8_t sleeping = 0;
+void go_to_sleep(void);
+void wake_up(void);
+volatile unsigned long quiet_count = 0;
 
 volatile int16_t *capPtr = capture;;
 volatile prog_int16_t *adc_window = tbl_window;
@@ -39,87 +50,72 @@ complex_t bfly[FFT_N];
 uint8_t spectrum[FFT_N/2];
 uint8_t spectrum_history[FFT_N/2];
 
+uint8_t divide_steps = DIVIDE_STEPS_INIT;
+unsigned long divide_steps_change_delay = DIVIDE_STEPS_CHANGE_DELAY;
+volatile unsigned long loopnum = 0;
+volatile unsigned long sleepcycles = 0;
+volatile uint16_t backlight_task_scaler = 0;
+
 int main(void)
 {
+	memset( spectrum, 0, sizeof(spectrum) );
+	memset( spectrum_history, 0, sizeof(spectrum) );
 
 	init();
 
-	pot_set_gain( POT_GAIN );
-	pot_set_bias( POT_BIAS );
-
-	spi_deinit(); // disable spi unless we plan to adjust the digital pot later
-
 	while(1)
 	{
-		// Apply window function and store in butterfly array
-		fft_input( capture, bfly );
-
-		// Execute forier transform
-		fft_execute( bfly );
-
-		// Bit reversal algorithm from butterfly array to output array
-		fft_output( bfly, spectrum );
-	
-		// Do exponential/FIR filtering with history data
-		exp_average( spectrum, spectrum_history );
-
-		// Don't bother printing to lcd if the backlight isn't on
-		if( backlight_timeout_task( spectrum[BACKLIGHT_BAR], BACKLIGHT_CUTOFF ) )
+		if( sleeping )
 		{
-			// Print resulting data to LCD 
-			fastlcd( spectrum );
-		}
+			sleepcycles++;
 
+			if( backlight_task_scaler++ >= 75 )
+			{
+				backlight_task(-1);
+				backlight_task_scaler = 0;
+			}
+
+			if( sleeping == 3 )
+				go_to_sleep();
+			else if( sleeping == 2 )
+				wake_up();
+			else // sleeping == 1
+			{
+				SMCR = _BV(SM0) | _BV(SE);
+				asm volatile( "sleep\n\t" );
+			}
+		}
+		else
+		{
+			backlight_task_scaler = 0;
+			backlight_task(-1);
+
+			// Apply window function and store in butterfly array
+			fft_input( capture, bfly );
+
+			// Execute forier transform
+			fft_execute( bfly );
+
+			// Bit reversal algorithm from butterfly array to output array
+			fft_output( bfly, spectrum );
+
+			// Do exponential/FIR filtering with history data
+			exp_average( spectrum, spectrum_history );
+
+#ifdef BLANK_LEFT_TWO_BARS
+			spectrum[0] = spectrum[1] = 0;
+#else
+#endif
+			avc_task( spectrum );
+
+			fastlcd( spectrum );
+			
+			loopnum++;
+		}
 	}
 	return 0;
 }
 
-int backlight_timeout_task( uint8_t bar, uint8_t cutoff )
-{
-	static uint8_t backlight_state = 1;
-	static unsigned long quiet_count = 0;
-
-	uint8_t bl = backlight_state;
-	if( bar < cutoff )
-	{
-		if( quiet_count >= BACKLIGHT_TIMEOUT )
-		{
-			bl = 0;
-		}
-		else
-		{
-			quiet_count++;
-		}
-	}
-	else
-	{
-		bl = 1;
-		quiet_count = 0;
-	}
-
-	if( bl != backlight_state )
-	{
-		if( bl )
-		{
-			lcd_init( CHIP1 );
-			lcd_init( CHIP2 );
-			backlight_task(LPF_OCR+1); // Fade up to full brightness
-		}
-		else
-		{
-			lcd_deinit( CHIP1 );
-			lcd_deinit( CHIP2 );
-			backlight_task(0);
-		}
-
-		backlight_state = bl;
-	}
-	else
-	{
-		backlight_task(-1);
-	}
-	return (backlight_state) ? 1 : 0;
-}
 
 void init(void)
 {
@@ -131,19 +127,14 @@ void init(void)
 	// initialize each lcd driver chip
 	lcd_init(CHIP1);
 	lcd_init(CHIP2);
-
-#ifdef DISPLAY_TEST_PATTERN
-	// Display test pattern for a few seconds to allow contrast adjustment
-	set_bl(0xffff); // backlight on full immediately
-	lcd_set_screen( 0xf0 ); // print test pattern
-	_delay_ms(1000); // delay
-	set_bl(0); // backlight off immediately
-#endif
 	
 	adc_init(); // Analog-to-digital converter init	
 	spi_init(); // Serial interface to digital potentiometer init
+	
+	pot_set_gain( POT_GAIN_INIT );
+	pot_set_bias( POT_BIAS_INIT );
 
-	backlight_task(LPF_OCR+1); // Fade up to full brightness
+	backlight_task(lpf_ocr+1); // Fade up to full brightness
 	
 	sei(); // enable interrupts
 
@@ -164,7 +155,7 @@ void adc_init(void)
 void lpf_init(void)
 {
 	/* ~2.2MHz output (with 16Mhz crystal) on OC1A */
-	OCR1A  = LPF_OCR;
+	OCR1A  = lpf_ocr;
 	TCCR1A = _BV(COM1A0) | _BV(WGM10) | _BV(WGM11);
 	TCCR1B = _BV(WGM12) | _BV(WGM13) | _BV(CS10);
 
@@ -192,28 +183,12 @@ void io_init(void)
 }
 void backlight_init(void)
 {
-
 	// Timer 1 is already used for LPF's 2.2MHz input; init just in case it isn't called elsewhere
 	lpf_init();
 
-	set_bl(0); // start with backlight off
+	backlight_task(0);
+	BACKLIGHT_DDR |= _BV(BACKLIGHT);
 	TCCR1A |= _BV(COM1B1); // add output compare to the timer's config
-
-	return;
-}
-void set_bl( uint16_t val ) // set backlight to val between 0 and OCR1A
-{
-	if( val == 0 )
-	{
-		BACKLIGHT_DDR &= ~_BV(BACKLIGHT);
-		OCR1B = 0;
-	}
-	else
-	{
-		BACKLIGHT_DDR |= _BV(BACKLIGHT);
-		OCR1B = val;
-	}
-
 
 	return;
 }
@@ -237,6 +212,179 @@ void backlight_task( int val )
 			call_counter = 0;
 		}
 	}
+	return;
+}
+void set_bl( uint16_t val ) // set backlight to val between 0 and OCR1A
+{
+	if( val == 0 )
+	{
+		OCR1B = lpf_ocr+1; // set above the TOP value
+		TCCR1A |= _BV(COM1B0); // set inverting mode
+	}
+	else
+	{
+		OCR1B = val; // set fade value
+		TCCR1A &= ~_BV(COM1B0); // non-inverting mode
+	}
+	return;
+}
+	
+// Automatic volume control
+void avc_task( uint8_t *spec_buffer )
+{
+	static uint8_t pot_gain = POT_GAIN_INIT;
+	static uint8_t pot_bias = POT_BIAS_INIT;
+	static unsigned long sum_history = 0;
+	
+	uint8_t i = VOL_CTRL_NUM_BARS;
+	uint8_t *sp = spec_buffer + (FULL_SCREEN_WIDTH-VOL_CTRL_NUM_BARS);
+	unsigned long sum = 0;
+	while(i--)
+	{
+		sum += *sp++;
+	}
+	
+	unsigned long tmp = sum_history * (AVC_AVERAGING_FACTOR-1);
+	tmp /= AVC_AVERAGING_FACTOR;
+	sum_history = sum = sum / AVC_AVERAGING_FACTOR + tmp;
+
+	uint8_t pot_gain_start = pot_gain;
+	uint8_t pot_bias_start = pot_bias;
+	
+	// Volume needs to go down
+	if( sum > AVC_VOLUME_MAX_LEVEL ) 
+	{
+		if( pot_bias == POT_BIAS_MAX && pot_gain == 1 )
+		{
+			if( divide_steps_change_delay == 0 )
+			{
+				if( divide_steps < DIVIDE_STEPS_MAX )
+				{
+					divide_steps++;
+					pot_bias = POT_BIAS_MIN;
+					//pot_set_bias( pot_bias );
+					
+					pot_gain = POT_GAIN_MAX - 5;
+					//pot_set_gain( pot_gain );
+				}
+				divide_steps_change_delay = DIVIDE_STEPS_CHANGE_DELAY;
+			}
+			else
+				divide_steps_change_delay--;
+		}
+		else
+		{
+			divide_steps_change_delay = DIVIDE_STEPS_CHANGE_DELAY; // reset change delay counter
+
+			if( pot_bias == POT_BIAS_MIN && pot_gain > POT_GAIN_MIN )
+			{
+				pot_gain--;
+				if( pot_gain < POT_GAIN_MIN )
+					pot_gain = POT_GAIN_MIN;
+				//else
+				//	pot_set_gain(pot_gain);
+			}
+			else
+			{
+				pot_bias++;
+				if( pot_bias > POT_BIAS_MAX )
+					pot_bias = POT_BIAS_MAX;
+				//else
+				//	pot_set_bias( pot_bias );
+			}
+		}
+	}
+	// Volume needs to go up
+	else if( sum < AVC_VOLUME_MIN_LEVEL )
+	{
+		if( pot_bias == POT_BIAS_MIN && pot_gain == POT_GAIN_MAX )
+		{
+			if( divide_steps_change_delay == 0 )
+			{
+				if( divide_steps > DIVIDE_STEPS_MIN )
+				{
+					divide_steps--;
+					pot_gain = (double)pot_gain * POT_GAIN_DS_CHANGE_MULTIPLIER;
+					//pot_set_gain(pot_gain);
+				}
+				divide_steps_change_delay = DIVIDE_STEPS_CHANGE_DELAY;
+			}
+			else
+				divide_steps_change_delay--;
+		}
+		else
+		{
+			divide_steps_change_delay = DIVIDE_STEPS_CHANGE_DELAY; // reset change delay counter
+
+			if( pot_bias == POT_BIAS_MIN && pot_gain < POT_GAIN_MAX )
+			{
+				pot_gain++;
+				if( pot_gain > POT_GAIN_MAX )
+					pot_gain = POT_GAIN_MAX;
+				//else
+				//	pot_set_gain(pot_gain);
+			}
+			else
+			{
+				pot_bias--;
+				if( pot_bias < POT_BIAS_MIN )
+					pot_bias = POT_BIAS_MIN;
+				//else
+				//	pot_set_bias( pot_bias );
+			}
+		}
+	}
+
+	if( pot_bias != pot_bias_start )
+		pot_set_bias(pot_bias);
+	if( pot_gain != pot_gain_start )
+		pot_set_gain(pot_gain);
+
+#ifdef AVC_VOLUME_DEBUG_OUTPUT
+	spec_buffer[0] = (long)FULL_SCREEN_HEIGHT * (pot_bias-POT_BIAS_MIN) / (long)(POT_BIAS_MAX-POT_BIAS_MIN);
+	spec_buffer[1] = (long)FULL_SCREEN_HEIGHT * (pot_gain-POT_GAIN_MIN) / (long)(POT_GAIN_MAX-POT_GAIN_MIN);
+	spec_buffer[2] = (long)FULL_SCREEN_HEIGHT * sum / (long)VOL_CTRL_MAX_VOL;
+#endif
+#ifdef DIVIDE_STEPS_DEBUG_OUTPUT
+	spec_buffer[3] = 0; 
+	spec_buffer[4] = divide_steps * 5; 
+	s5ec_buffer[5] = 0; 
+#endif
+
+	return;
+}
+void go_to_sleep(void)
+{
+	cli();
+	ADCSRA = _BV(ADEN) | _BV(ADATE) | _BV(ADIE) | (_BV(ADPS2) | _BV(ADPS1) | _BV(ADPS0));
+	ADCSRA |= _BV(ADSC); // start first conversion
+
+	backlight_task(0); // turn off light
+
+	lcd_set_screen(0);
+	lcd_deinit( CHIP1 );
+	lcd_deinit( CHIP2 );
+	sleeping = 1;
+	sei();
+	return;
+}
+void wake_up(void)
+{
+	cli();
+	SMCR = 0;
+
+	pot_set_gain( POT_GAIN_INIT );
+	pot_set_bias( POT_BIAS_INIT );
+	divide_steps = DIVIDE_STEPS_INIT;
+
+	lcd_init( CHIP1 );
+	lcd_init( CHIP2 );
+
+	backlight_task(lpf_ocr+1); // full brightness
+
+	sleeping = 0;
+	adc_init();
+	sei();
 	return;
 }
 void lcd_init( uint8_t chip )
@@ -336,7 +484,7 @@ void spi_init(void) // SPI Setup
 	SPI_CS_PORT 		|= _BV(SPI_CS);
 
 	SPI_REAL_CS_DDR 	|=  _BV(SPI_REAL_CS);
-	SPI_CS_DDR 			|=  _BV(SPI_CS);
+	SPI_CS_DDR	 		|=  _BV(SPI_CS);
 	MISO_DDR   &= ~_BV(MISO);
 	MISO_PORT  |=  _BV(MISO); // pullup
 	
