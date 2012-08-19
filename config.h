@@ -1,11 +1,15 @@
 #ifndef _CONFIG_H_
 #define _CONFIG_H_
 
+
+//#define LOG_VALUES // This is still a work in progress
+
 // Screen params
 #define FULL_SCREEN_WIDTH 128
 #define FULL_SCREEN_HEIGHT 64
 
 #define BLANK_LEFT_TWO_BARS
+//#define DISPLAY_TEST_PATTERN
 
 #define FFT_N	256		/* Number of samples (64,128,256,512). Don't forget to clean! */
 
@@ -19,6 +23,7 @@
 /** 
  * Automatic volume control (AVC) parameters
  */
+//#define AVC_VOLUME_DEBUG_OUTPUT
 
 // Volume is a sum of this many columns from right to left
 #define VOL_CTRL_NUM_BARS 128
@@ -58,9 +63,11 @@
 #define DIVIDE_STEPS_INIT (OVERSAMPS / 2)
 #endif
 #define DIVIDE_STEPS_CHANGE_DELAY 10 // delay before changing divide_steps
+//#define DIVIDE_STEPS_DEBUG_OUTPUT
 
 /* Low pass filter */
 #define LPF_OCR 6
+
 
 /* Overall sampling rate will be F_CPU / (ADC_PRESCALE * OVERSAMPS * 13.5) 
  * see data.xlsx */
@@ -90,5 +97,6 @@
 #if AVC_VOLUME_MAX_LEVEL > VOL_CTRL_MAX_VOL
 #warn "AVC_VOLUME_MAX_LEVEL exceeds the maximum possible value"
 #endif
+
 
 #endif

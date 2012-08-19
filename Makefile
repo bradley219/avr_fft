@@ -133,7 +133,7 @@ OBJCOPY_FLAGS = -j .text -j .data -O$(FORMAT)
 all: sizebefore build sizeafter
 
 $(CONFIG_FILE): $(CONFIG_FILE_TEMPLATE)
-	@cp $(CONFIG_FILE_TEMPLATE) $(CONFIG_FILE)
+	@cp -n $(CONFIG_FILE_TEMPLATE) $(CONFIG_FILE)
 
 build: hex
 
