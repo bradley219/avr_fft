@@ -6,3 +6,5 @@ scripts/log_table_adc.php
 *.lst
 *.o
 *.elf
+
+config.h

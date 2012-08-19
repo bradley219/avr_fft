@@ -37,6 +37,9 @@ INCLUDE = \
 
 AS_INCLUDE = -I.
 
+CONFIG_FILE_TEMPLATE = config.h.example
+CONFIG_FILE = config.h
+
 
 FORMAT = ihex
 
@@ -128,6 +131,9 @@ OBJCOPY_FLAGS = -j .text -j .data -O$(FORMAT)
 
 # Default target.
 all: sizebefore build sizeafter
+
+$(CONFIG_FILE): $(CONFIG_FILE_TEMPLATE)
+	@cp $(CONFIG_FILE_TEMPLATE) $(CONFIG_FILE)
 
 build: hex
 
