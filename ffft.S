@@ -711,16 +711,23 @@ fft_output:
 	cpi	XL,0
 	breq 5f ; continue if zero
 4:
+	; Divide by 2
 	lsr	BH
 	ror	BL
-	dec	XL
-	brne 4b
+
+	dec	XL ; Decrement the divide_steps counter
+	brne 4b ; Branch out when divide steps reaches 0
 5:
 
-;	inc	BL
-	
-	st		Y+,BL
-	
+	; Check if the high byte still has a value
+	cpi		BH,0
+	brne	6f ; if non-zero, set BL to 0xff
+	rjmp	7f
+6:
+	ldi	BL,0xff
+7:
+	st		Y+,BL ; Store the final value into the output buffer
+
 	subiw	AH,AL, 1			;while(--A)
 	rjne	1b				;/
 

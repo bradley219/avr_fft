@@ -14,11 +14,11 @@
 #define FFT_N	256		/* Number of samples (64,128,256,512). Don't forget to clean! */
 
 /* Exponential display averaging */
-#define AVG_SAMPLES 4 // best speeds are achieved with powers of 2 
+#define AVG_SAMPLES 2 // best speeds are achieved with powers of 2 
 
 /* ADC Params */
 #define ADC_PRESCALE 128 /* AVR ADC prescale value */
-#define OVERSAMPS 1 /* Artificial oversampling in software */
+#define OVERSAMPS 2 /* Artificial oversampling in software */
 
 /** 
  * Automatic volume control (AVC) parameters
@@ -74,12 +74,12 @@
 
 /* Triggering */
 #define TRIGGERVAL 512 /* ADC trigger value */
-#define TRIGGER_MARGIN (OVERSAMPS*50) // ADC trigger value fuzziness must be 0xff or lower
+#define TRIGGER_MARGIN (OVERSAMPS*60) // ADC trigger value fuzziness must be 0xff or lower
 
 // Backlight stuff
 #define BACKLIGHT_FADE_SPEED 3 // higher values = slower fade rate
 #define BACKLIGHT_TIMEOUT 1000000
-#define SLEEP_TRIGGER (TRIGGERVAL-5)
+#define SLEEP_TRIGGER (TRIGGERVAL-8)
 
 
 /* Timers */

@@ -1,3 +1,8 @@
 scripts/log_table_adc.php
 */.*.swp
 .*.swp
+
+*.i
+*.lst
+*.o
+*.elf
