@@ -63,6 +63,8 @@ int main(void)
 
 	init();
 
+	uint16_t cycles_till_reset_x = LCD_RESET_ADDR_CYCLES;
+
 	while(1)
 	{
 		if( sleeping )
@@ -108,6 +110,12 @@ int main(void)
 #endif
 			avc_task( spectrum );
 
+			if( --cycles_till_reset_x <= 0 )
+			{
+				cycles_till_reset_x = LCD_RESET_ADDR_CYCLES;
+				lcd_write_instruction( LCD_ADDR | 0, CHIP1 );
+				lcd_write_instruction( LCD_ADDR | 0, CHIP2 );
+			}
 			fastlcd( spectrum );
 			
 			loopnum++;
@@ -387,12 +395,17 @@ void wake_up(void)
 	sei();
 	return;
 }
+void lcd_reset_x( uint8_t chip )
+{
+	lcd_write_instruction( LCD_ADDR | 0, chip );
+}
+
 void lcd_init( uint8_t chip )
 {
 	_delay_ms(10);
 	lcd_write_instruction( LCD_ON, chip );
 	lcd_write_instruction( LCD_START_LINE | 0, chip );
-	lcd_write_instruction( LCD_ADDR | 0, chip );
+	lcd_reset_x(chip);
 	return;
 }
 void lcd_deinit( uint8_t chip )

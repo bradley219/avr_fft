@@ -91,4 +91,9 @@
 #warn "AVC_VOLUME_MAX_LEVEL exceeds the maximum possible value"
 #endif
 
+/**
+ * LCD Parameters
+ */
+#define LCD_RESET_ADDR_CYCLES 100
+
 #endif

@@ -132,6 +132,7 @@ OBJCOPY_FLAGS = -j .text -j .data -O$(FORMAT)
 # Default target.
 all: sizebefore build sizeafter
 
+# Copy config file template to config file without clobbering existing file
 $(CONFIG_FILE): $(CONFIG_FILE_TEMPLATE)
 	@cp -n $(CONFIG_FILE_TEMPLATE) $(CONFIG_FILE)
 
