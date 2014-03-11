@@ -661,7 +661,22 @@ fft_execute:
 	ret
 .endfunc
 
+.macro FFT_OUTPUT_CLEANUP_AND_RETURN
+	st		Y+,BL ; Store the final value into the output buffer
 
+	subiw	AH,AL, 1			;while(--A)
+	rjne	1b				;/
+
+	popw	YH,YL
+	popw	AH,AL
+	popw	T10H,T10L
+	popw	T8H,T8L
+	popw	T6H,T6L
+	popw	T4H,T4L
+	popw	T2H,T2L
+
+	ret
+.endm
 
 ;----------------------------------------------------------------------------;
 .global fft_output
@@ -722,24 +737,12 @@ fft_output:
 	; Check if the high byte still has a value
 	cpi		BH,0
 	brne	6f ; if non-zero, set BL to 0xff
-	rjmp	7f
+	FFT_OUTPUT_CLEANUP_AND_RETURN
+
 6:
 	ldi	BL,0xff
-7:
-	st		Y+,BL ; Store the final value into the output buffer
+	FFT_OUTPUT_CLEANUP_AND_RETURN
 
-	subiw	AH,AL, 1			;while(--A)
-	rjne	1b				;/
-
-	popw	YH,YL
-	popw	AH,AL
-	popw	T10H,T10L
-	popw	T8H,T8L
-	popw	T6H,T6L
-	popw	T4H,T4L
-	popw	T2H,T2L
-
-	ret
 .endfunc
 
 
