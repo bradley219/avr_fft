@@ -209,9 +209,11 @@ endlcd0:
 	subi	r24,64								; Move the pointer to the middle of the data
 	sbci	r25,0
 
+    ; If we just finished CHIP2, jump to the end
 	cpi	CHIPNO,CHIP2
 	breq	endlcd1
 
+    ; Set to CHIP2 and start over
 	ldi	CHIPNO,CHIP2
 	rjmp	displaystart
 

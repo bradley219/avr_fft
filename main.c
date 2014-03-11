@@ -104,9 +104,30 @@ int main(void)
 			// Do exponential/FIR filtering with history data
 			exp_average( spectrum, spectrum_history );
 
+#ifdef DISPLAY_TEST_PATTERN
+			uint8_t *sp = spectrum;
+			uint8_t v = 5;
+			uint8_t k = sizeof(spectrum)/sizeof(uint8_t);
+			while( k-- )
+			{
+				*sp = v;
+				v++;
+				if( v > 38 )
+					v = 5;
+				sp++;
+			}
+
+			long t = 100000;
+			while(t--)
+			{
+				asm volatile("nop");
+			}
+
+#else
+
 #ifdef BLANK_LEFT_TWO_BARS
 			spectrum[0] = spectrum[1] = 0;
-#else
+#endif
 #endif
 			avc_task( spectrum );
 
